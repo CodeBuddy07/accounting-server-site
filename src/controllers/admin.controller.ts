@@ -27,7 +27,7 @@ export const loginAdmin: RequestHandler = async (req: Request, res: Response, ne
       httpOnly: true, // Prevents client-side JS from accessing the cookie
       secure: config.environment === "production", // Ensures cookies are only sent over HTTPS in production
       maxAge: 3600000, // 1 hour in milliseconds
-      sameSite: "strict", // Prevents CSRF attacks
+      sameSite: "none", // Prevents CSRF attacks
     });
 
     // Send response
