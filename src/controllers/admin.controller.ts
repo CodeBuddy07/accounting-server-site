@@ -25,7 +25,7 @@ export const loginAdmin: RequestHandler = async (req: Request, res: Response, ne
     // Set token in cookies
     res.cookie("token", token, {
       httpOnly: true, // Prevents client-side JS from accessing the cookie
-      secure: config.environment === "production", // Ensures cookies are only sent over HTTPS in production
+      secure: true, // Ensures cookies are only sent over HTTPS in production
       maxAge: 3600000, // 1 hour in milliseconds
       sameSite: 'none',
     });
