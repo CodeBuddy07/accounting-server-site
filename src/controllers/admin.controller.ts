@@ -1,6 +1,6 @@
 import { NextFunction, Request, RequestHandler, Response } from "express";
 import Admin from "../models/admin.model";
-import { comparePassword, generateToken, hashPassword, verifyToken,  } from "../utils/JWT";
+import { comparePassword, generateToken, hashPassword, verifyToken, } from "../utils/JWT";
 import config from "../config";
 import { sendEmail } from "../utils/emailSender";
 
@@ -9,7 +9,7 @@ export const loginAdmin: RequestHandler = async (req: Request, res: Response, ne
   try {
     const { email, password } = req.body;
     // Find admin by email
-    const admin = await Admin.findOne({ email }) 
+    const admin = await Admin.findOne({ email })
 
     // Check if admin exists and password is correct
     if (!admin || !(await comparePassword(password, admin.password))) {
@@ -20,14 +20,14 @@ export const loginAdmin: RequestHandler = async (req: Request, res: Response, ne
     }
 
     // Generate JWT token
-    const token = generateToken({email: admin.email});
+    const token = generateToken({ email: admin.email });
 
     // Set token in cookies
     res.cookie("token", token, {
       httpOnly: true, // Prevents client-side JS from accessing the cookie
       secure: config.environment === "production", // Ensures cookies are only sent over HTTPS in production
       maxAge: 3600000, // 1 hour in milliseconds
-      sameSite: "none", // Prevents CSRF attacks
+      sameSite: 'none',
     });
 
     // Send response
@@ -82,7 +82,7 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
     }
 
     // Generate reset token (expires in 15 minutes)
-    const resetToken = generateToken({email: admin.email}, "15m");
+    const resetToken = generateToken({ email: admin.email }, "15m");
 
     const resetUrl = `${config.clientSite}/reset-password/${resetToken}`;
 
@@ -118,7 +118,7 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
     const decoded: any = verifyToken(resetToken);
 
     // Find admin by ID from the token
-    const admin = await Admin.findOne({email: decoded.email});
+    const admin = await Admin.findOne({ email: decoded.email });
     if (!admin) {
       const error = new Error("Invalid token");
       (error as any).statusCode = 400;
@@ -137,8 +137,8 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
 
 export const logout = (req: Request, res: Response, next: NextFunction) => {
   try {
-    
-    res.clearCookie("token"); 
+
+    res.clearCookie("token");
 
     // Send a success response
     res.status(200).json({ message: "Logout successful" });
@@ -150,7 +150,7 @@ export const logout = (req: Request, res: Response, next: NextFunction) => {
 export const Auth = (req: Request, res: Response, next: NextFunction) => {
   try {
     // Send a success response
-    res.status(200).json({ success: true, message: "Verification successful", admin:req.admin });
+    res.status(200).json({ success: true, message: "Verification successful", admin: req.admin });
   } catch (error) {
     next(error);
   }
