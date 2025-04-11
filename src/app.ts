@@ -21,9 +21,9 @@ app.use(cookieParser());
 
 // Routes
 app.use("/api/admin", adminRoutes);
-app.use("/api/customer", customerRoutes);
-app.use("/api/product", productRoutes);
-app.use("/api/transaction", transactionRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 app.get('/', (req, res)=>{
     res.send("Accounting Server is running.")
