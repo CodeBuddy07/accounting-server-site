@@ -6,8 +6,8 @@ import { ITransaction } from '../models/transaction.model';
 // Add a new customer
 export const addCustomer = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { name, phone, note, dues, receivable } = req.body;
-        const newCustomer: ICustomer = new Customer({ name, phone, note, dues, receivable });
+        const { name, phone, note, balance } = req.body;
+        const newCustomer: ICustomer = new Customer({ name, phone, note, balance });
         await newCustomer.save();
         res.status(201).json(newCustomer);
     } catch (error) {
@@ -79,17 +79,40 @@ export const getCustomers = async (req: Request, res: Response, next: NextFuncti
 };
 
 
-// Adjust dues/receivables when a transaction is made
-export const adjustDuesReceivables = async (transaction: ITransaction) => {
-    if (transaction.customerId) {
-        const customer = await Customer.findById(transaction.customerId);
-        if (customer) {
-            if (transaction.type === 'due') {
-                customer.dues = (customer.dues || 0) - transaction.amount;
-            } else if (transaction.type === 'receivable') {
-                customer.receivable = (customer.receivable || 0) + transaction.amount;
-            }
-            await customer.save();
-        }
+// Adjust balance based on transaction
+export const adjustCustomerBalance = async (transaction: ITransaction) => {
+    if (!transaction.customerId) return;
+
+    const customer = await Customer.findById(transaction.customerId);
+    if (!customer) return;
+
+    const amount = transaction.amount;
+
+    switch (transaction.type) {
+        case 'sell':
+            // Customer bought something → owes you → balance goes more negative
+            customer.balance = (customer.balance ?? 0) - amount;
+            break;
+
+        case 'buy':
+            // You bought something from customer → you owe them → balance goes more positive
+            customer.balance = (customer.balance ?? 0) + amount;
+            break;
+
+        case 'receivable':
+            // Customer pays you → reduces their due → balance increases (less negative)
+            customer.balance = (customer.balance ?? 0) + amount;
+            break;
+
+        case 'due':
+            // You pay customer → reduces your due → balance decreases (less positive)
+            customer.balance = (customer.balance ?? 0) - amount;
+            break;
+
+        default:
+            break;
     }
+
+    await customer.save();
 };
+

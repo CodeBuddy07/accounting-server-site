@@ -1,116 +1,107 @@
 import { NextFunction, Request, Response } from 'express';
-import { adjustDuesReceivables } from './customer.controller';
 import Transaction, { ITransaction } from '../models/transaction.model';
+import { adjustCustomerBalance } from './customer.controller';
 
 
 // Add a new transaction
 export const addTransaction = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { type, customerId, productId, amount, note } = req.body;
-    const newTransaction: ITransaction = new Transaction({
-        type,
-        customerId,
-        productId,
-        amount,
-        note,
-    });
+  try {
+      const { type, customerId, productId, customerName, amount, note, paymentType } = req.body;
 
-    console.log(customerId);
-    await newTransaction.save();
+      const newTransaction: ITransaction = new Transaction({
+          type,
+          customerId,
+          customerName,
+          productId,
+          amount,
+          note,
+          paymentType,
+      });
 
-    // Adjust dues/receivables if the transaction involves a customer
-    if (customerId) {
-        await adjustDuesReceivables(newTransaction);
-    }
+      await newTransaction.save();
 
-    res.status(201).json(newTransaction);
-    } catch (error) {
-        next(error);
-    }
+      // Adjust balance only if it's a DUE and customer exists
+      if (paymentType === 'due' && customerId) {
+          await adjustCustomerBalance(newTransaction);
+      }
+
+      res.status(201).json(newTransaction);
+  } catch (error) {
+      next(error);
+  }
 };
+
 
 // Get Transactions with Pagination, Search, Type and Date Filtering
 export const getTransactions = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { page = 1, limit = 10, search = "", type, date } = req.query;
-  
-      const match: any = {};
-  
-      // Type filter
-      if (type && type !== "all") {
-        match.type = type;
-      }
-  
-      // Date filter (filtering on 'date' field, not 'createdAt')
-      if (date) {
-        const userDate = new Date(date as string);
-        const start = new Date(userDate.setHours(0, 0, 0, 0));
-        const end = new Date(userDate.setHours(23, 59, 59, 999));
-  
-        match.date = { $gte: start, $lte: end };
-      }
-  
-      const pipeline: any[] = [
-        {
-          $lookup: {
-            from: "customers",
-            localField: "customerId",
-            foreignField: "_id",
-            as: "customer",
-          },
-        },
-        { $unwind: "$customer" },
-        {
-          $lookup: {
-            from: "products",
-            localField: "productId",
-            foreignField: "_id",
-            as: "product",
-          },
-        },
-        { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
-        { $match: match },
-      ];
-  
-      // Search by note and customer name
-      if (search) {
-        pipeline.push({
-          $match: {
-            $or: [
-              { note: { $regex: search, $options: "i" } },
-              { "customer.name": { $regex: search, $options: "i" } },
-            ],
-          },
-        });
-      }
-  
-      // Sort, paginate
-      pipeline.push(
-        { $sort: { date: -1 } },
-        { $skip: (+page - 1) * +limit },
-        { $limit: +limit }
-      );
-  
-      const [transactions, countDocs] = await Promise.all([
-        Transaction.aggregate(pipeline),
-        Transaction.aggregate([
-          ...pipeline.filter((stage) => !('$skip' in stage || '$limit' in stage)),
-          { $count: "total" },
-        ]),
-      ]);
-  
-      const totalItems = countDocs[0]?.total || 0;
-  
-      res.json({
-        data: transactions,
-        currentPage: +page,
-        totalPages: Math.ceil(totalItems / +limit),
-        totalItems,
-      });
-    } catch (error) {
-      next(error);
+  try {
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = "", 
+      type, 
+      dateFrom, 
+      dateTo 
+    } = req.query;
+
+    // Build base query
+    const query: any = {};
+
+
+    console.log("from: ", dateFrom," to: ", dateTo);
+
+    // Type filter
+    if (type && type !== "all") {
+      query.type = type;
     }
-  };
+
+    // Date range filter
+    if (dateFrom || dateTo) {
+      query.date = {};
+      if (dateFrom) {
+        const fromDate = new Date(dateFrom as string);
+        fromDate.setUTCHours(0, 0, 0, 0);
+        query.date.$gte = fromDate;
+      }
+      if (dateTo) {
+        const toDate = new Date(dateTo as string);
+        toDate.setUTCHours(23, 59, 59, 999);
+        query.date.$lte = toDate;
+      }
+    }
+
+    // Search filter
+    if (search) {
+      query.$or = [
+        { note: { $regex: search, $options: "i" } },
+        { customerName: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    // Get transactions with pagination
+    const [transactions, total] = await Promise.all([
+      Transaction.find(query)
+        .populate('customerId', 'name')
+        .populate('productId', 'name')
+        .sort({ date: -1 })
+        .skip((+page - 1) * +limit)
+        .limit(+limit)
+        .lean(),
+      
+      Transaction.countDocuments(query)
+    ]);
+
+    res.json({
+      data: transactions,
+      currentPage: +page,
+      totalPages: Math.ceil(total / +limit),
+      totalItems: total,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
   
   
   

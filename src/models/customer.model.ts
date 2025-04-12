@@ -3,16 +3,14 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface ICustomer extends Document {
     name: string;
     phone: string;
-    dues?: number;
-    receivable?: number;
+    balance?: number;
     note?: string;
 }
 
 const CustomerSchema: Schema = new Schema({
     name: { type: String, required: true },
     phone: { type: String, required: true },
-    dues: { type: Number, default: 0 },
-    receivable: { type: Number, default: 0 },
+    balance: { type: Number, default: 0 },
     note: { type: String },
 });
 
