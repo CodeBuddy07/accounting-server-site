@@ -6,15 +6,18 @@ import { adjustCustomerBalance } from './customer.controller';
 // Add a new transaction
 export const addTransaction = async (req: Request, res: Response, next: NextFunction) => {
   try {
-      const { type, customerId, productId, customerName, amount, note, paymentType } = req.body;
+      const { type, customerId, products, date, customerName, total, note, paymentType } = req.body;
+
+      console.log("Transaction data: ", req.body);
 
       const newTransaction: ITransaction = new Transaction({
           type,
           customerId,
           customerName,
-          productId,
-          amount,
+          products,
+          total,
           note,
+          date,
           paymentType,
       });
 
@@ -82,7 +85,7 @@ export const getTransactions = async (req: Request, res: Response, next: NextFun
     const [transactions, total] = await Promise.all([
       Transaction.find(query)
         .populate('customerId', 'name')
-        .populate('productId', 'name')
+        .populate('products.productId', 'name')
         .sort({ date: -1 })
         .skip((+page - 1) * +limit)
         .limit(+limit)
@@ -112,15 +115,15 @@ export const getTotals = async (req: Request, res: Response, next: NextFunction)
         const transactions = await Transaction.find();
     const totalSales = transactions
         .filter(t => t.type === 'sell')
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + t.total, 0);
 
     const totalBuys = transactions
         .filter(t => t.type === 'buy')
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + t.total, 0);
 
     const totalExpenses = transactions
         .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + t.total, 0);
 
     const remainingCash = totalSales - totalBuys - totalExpenses;
 
