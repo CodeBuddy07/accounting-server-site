@@ -6,6 +6,8 @@ import adminRoutes from "./routes/admin.routes";
 import customerRoutes from "./routes/customer.route";
 import productRoutes from "./routes/product.route";
 import transactionRoutes from "./routes/transaction.route";
+import templateRoutes from "./routes/template.route";
+import StatisticsRoutes from "./routes/statistics.router";
 import globalErrorHandler from "./utils/globalErrorHandler";
 
 
@@ -24,6 +26,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/statistics', StatisticsRoutes);
 
 app.get('/', (req, res)=>{
     res.send("Accounting Server is running.")

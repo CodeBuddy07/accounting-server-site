@@ -1,6 +1,8 @@
-import { NextFunction, Request, Response } from 'express';
+import { NextFunction, Request, RequestHandler, Response } from 'express';
 import Customer, { ICustomer } from '../models/customer.model';
-import { ITransaction } from '../models/transaction.model';
+import transactionModel, { ITransaction } from '../models/transaction.model';
+import mongoose from 'mongoose';
+import { sendSMS } from '../utils/smsSender';
 
 
 // Add a new customer
@@ -18,7 +20,7 @@ export const addCustomer = async (req: Request, res: Response, next: NextFunctio
 // Edit a customer
 export const editCustomer = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        
+
         const { id } = req.params;
         const { name, phone, note } = req.body;
         const customer = await Customer.findByIdAndUpdate(
@@ -78,6 +80,108 @@ export const getCustomers = async (req: Request, res: Response, next: NextFuncti
     }
 };
 
+export const getCustomerReport: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { customerId } = req.params;
+        const { page = 1, limit = 10 } = req.query;
+        const pageNumber = parseInt(page as string);
+        const limitNumber = parseInt(limit as string);
+
+        // Validate customerId
+        if (!mongoose.Types.ObjectId.isValid(customerId)) {
+            res.status(400).json({ message: 'Invalid customer ID' });
+            return 
+        }
+
+        // Get customer info
+        const customer = await Customer.findById(customerId).lean() as ICustomer;
+        if (!customer) {
+            res.status(404).json({ message: 'Customer not found' });
+            return 
+        }
+
+        // Build base query for transactions
+        const transactionQuery: any = {
+            $or: [
+                { customerId: new mongoose.Types.ObjectId(customerId) },
+                { customerName: customer.name }
+            ]
+        };
+
+        // Count total transactions for pagination
+        const totalTransactions = await transactionModel.countDocuments(transactionQuery);
+
+        // Get paginated transactions
+        const transactions = await transactionModel.find(transactionQuery)
+            .populate('products.productId', 'name')
+            .sort({ date: -1 })
+            .skip((pageNumber - 1) * limitNumber)
+            .limit(limitNumber)
+            .lean() as ITransaction[];
+
+        // Calculate totals (from all transactions, not just current page)
+        const allTransactions = await transactionModel.find(transactionQuery).lean();
+        
+        let totalPurchases = 0;
+        let totalSales = 0;
+        let amountOwed = 0;
+        let amountDue = 0;
+
+        allTransactions.forEach(txn => {
+            if (txn.type === 'buy') totalPurchases += txn.total;
+            if (txn.type === 'sell') totalSales += txn.total;
+            
+            if (txn.paymentType === 'due') {
+                if (txn.type === 'sell') amountDue += txn.total;
+                else amountOwed += txn.total;
+            }
+        });
+
+        // Process transactions for current page
+        const processedTransactions = transactions.map(txn => ({
+            id: txn._id.toString(),
+            type: txn.type,
+            date: txn.date.toISOString(),
+            amount: txn.total * (txn.type === 'sell' ? 1 : -1),
+            paymentType: txn.paymentType || 'cash',
+            products: txn.products?.map(product => ({
+                name: (product.productId as any)?.name || 'Unknown Product',
+                price: product.price,
+                quantity: product.quantity
+            })),
+            note: txn.note
+        }));
+
+        // Prepare the report with pagination info
+        const report = {
+            customerInfo: {
+                name: customer.name,
+                contact: customer.phone,
+                balance: customer.balance || 0
+            },
+            totals: {
+                totalPurchases,
+                totalSales,
+                amountOwed,
+                amountDue
+            },
+            transactions: {
+                data: processedTransactions,
+                pagination: {
+                    currentPage: pageNumber,
+                    totalPages: Math.ceil(totalTransactions / limitNumber),
+                    totalTransactions,
+                    transactionsPerPage: limitNumber
+                }
+            }
+        };
+
+        res.json(report);
+    } catch (error) {
+        next(error);
+    }
+};
+
 
 // Adjust balance based on transaction
 export const adjustCustomerBalance = async (transaction: ITransaction) => {
@@ -114,5 +218,29 @@ export const adjustCustomerBalance = async (transaction: ITransaction) => {
     }
 
     await customer.save();
+};
+
+// Edit a customer
+export const sendSMSToCustomer = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+
+        const { id } = req.params;
+        const { message } = req.body;
+        if (!message) {
+            res.status(400).json({ message: 'Message is required' });
+            return;
+        }
+        const customer = await Customer.findById(id);
+
+        if (customer) {
+            const x = message.replace('{name}', customer.name).replace('{balance}', customer.balance!.toString());
+            await sendSMS(customer.phone, x);
+            res.json({ message: 'SMS sent successfully' });
+        } else {
+            res.status(404).json({ message: 'Customer not found' });
+        }
+    } catch (error) {
+        next(error);
+    }
 };
 

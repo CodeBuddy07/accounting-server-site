@@ -7,6 +7,7 @@ export interface IProductItem {
 }
 
 export interface ITransaction extends Document {
+    _id: mongoose.Types.ObjectId;
     type: 'sell' | 'buy' | 'receivable' | 'due' | 'expense';
     customerId?: mongoose.Types.ObjectId;
     customerName?: string;

@@ -45,7 +45,7 @@ export const changePassword = async (req: Request, res: Response, next: NextFunc
     const { oldPassword, newPassword } = req.body;
 
     // Find admin by ID (assuming req.admin.id is set by auth middleware)
-    const admin = await Admin.findById(req.admin?.email);
+    const admin = await Admin.findById(req.admin?._id);
 
     // Check if admin exists and old password is correct
     if (!admin || !(await comparePassword(oldPassword, admin.password))) {
