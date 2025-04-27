@@ -184,41 +184,68 @@ export const getCustomerReport: RequestHandler = async (req: Request, res: Respo
 
 
 // Adjust balance based on transaction
-export const adjustCustomerBalance = async (transaction: ITransaction) => {
+export const adjustCustomerBalance = async (
+    transaction: ITransaction,
+    session: mongoose.ClientSession
+  ) => {
     if (!transaction.customerId) return;
-
-    const customer = await Customer.findById(transaction.customerId);
+  
+    const customer = await Customer.findById(transaction.customerId).session(session);
     if (!customer) return;
-
+  
     const total = transaction.total;
-
+  
     switch (transaction.type) {
-        case 'sell':
-            // Customer bought something → owes you → balance goes more negative
-            customer.balance = (customer.balance ?? 0) - total;
-            break;
-
-        case 'buy':
-            // You bought something from customer → you owe them → balance goes more positive
-            customer.balance = (customer.balance ?? 0) + total;
-            break;
-
-        case 'receivable':
-            // Customer pays you → reduces their due → balance increases (less negative)
-            customer.balance = (customer.balance ?? 0) + total;
-            break;
-
-        case 'due':
-            // You pay customer → reduces your due → balance decreases (less positive)
-            customer.balance = (customer.balance ?? 0) - total;
-            break;
-
-        default:
-            break;
+      case 'sell':
+        customer.balance = (customer.balance ?? 0) - total;
+        break;
+      case 'buy':
+        customer.balance = (customer.balance ?? 0) + total;
+        break;
+      case 'receivable':
+        customer.balance = (customer.balance ?? 0) + total;
+        break;
+      case 'due':
+        customer.balance = (customer.balance ?? 0) - total;
+        break;
+      default:
+        break;
     }
+  
+    await customer.save({ session });
+  };
+  
 
-    await customer.save();
-};
+// Reverse the balance based on the old transaction
+export const reverseCustomerBalance = async (transaction: ITransaction, session: mongoose.ClientSession) => {
+    if (!transaction.customerId) return;
+  
+    const customer = await Customer.findById(transaction.customerId).session(session);
+    if (!customer) return;
+  
+    const total = transaction.total;
+  
+    switch (transaction.type) {
+      case 'sell':
+        customer.balance = (customer.balance ?? 0) + total;
+        break;
+      case 'buy':
+        customer.balance = (customer.balance ?? 0) - total;
+        break;
+      case 'receivable':
+        customer.balance = (customer.balance ?? 0) - total;
+        break;
+      case 'due':
+        customer.balance = (customer.balance ?? 0) + total;
+        break;
+      default:
+        break;
+    }
+  
+    await customer.save({ session });
+  };
+  
+  
 
 // Edit a customer
 export const sendSMSToCustomer = async (req: Request, res: Response, next: NextFunction) => {

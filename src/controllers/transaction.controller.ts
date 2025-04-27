@@ -1,95 +1,109 @@
 import { NextFunction, Request, Response } from 'express';
 import Transaction, { ITransaction } from '../models/transaction.model';
-import { adjustCustomerBalance } from './customer.controller';
+import { adjustCustomerBalance, reverseCustomerBalance } from './customer.controller';
 import { sendSMS } from '../utils/smsSender';
 import customerModel from '../models/customer.model';
 import templateModel from '../models/template.model';
+import mongoose from 'mongoose';
+
 
 
 // Add a new transaction
 export const addTransaction = async (req: Request, res: Response, next: NextFunction) => {
+  const session = await mongoose.startSession();
+  
   try {
     const { type, customerId, products, date, customerName, total, note, paymentType, sms } = req.body;
-
     console.log("Transaction data: ", req.body);
 
-    const newTransaction: ITransaction = new Transaction({
-      type,
-      customerId,
-      customerName,
-      products,
-      total,
-      note,
-      date,
-      paymentType,
+    await session.withTransaction(async () => {
+      const newTransaction: ITransaction = new Transaction({
+        type,
+        customerId,
+        customerName,
+        products,
+        total,
+        note,
+        date,
+        paymentType,
+      });
+
+      await newTransaction.save({ session });
+
+      // Adjust balance only if it's a DUE and customer exists
+      if (paymentType === 'due' && customerId) {
+        await adjustCustomerBalance(newTransaction, session);
+      }
+
+      if (sms) {
+        const customer = await customerModel.findById(customerId).session(session);
+        const templates = await templateModel.find().session(session);
+
+        if (!customer) throw new Error('Customer not found');
+        if (!templates.length) throw new Error('Templates not found');
+
+        const template = templates.find(t => {
+          if (type === 'sell') return t.name === 'Sales Invoice';
+          if (type === 'buy') return t.name === 'Purchase Invoice';
+          if (type === 'receivable') return t.name === 'Receivable Adjustment';
+          if (type === 'due') return t.name === 'Due Adjustment';
+          return false;
+        });
+
+        if (!template) throw new Error('Template not found');
+
+        const message = template.content
+          .replace('{name}', customer.name)
+          .replace('{amount}', total.toString())
+          .replace('{balance}', customer.balance!.toString());
+
+        await sendSMS(customer.phone, message);
+      }
     });
-
-    await newTransaction.save();
-
-    // Adjust balance only if it's a DUE and customer exists
-    if (paymentType === 'due' && customerId) {
-      await adjustCustomerBalance(newTransaction);
-    }
-
-    if (sms) {
-      const customer = await customerModel.findById(customerId);
-      const templates = await templateModel.find();
-      if (!customer) {
-        res.status(404).json({ message: 'Customer not found' });
-        return;
-      }
-      if (!templates) {
-        res.status(404).json({ message: 'Template not found' });
-        return;
-      }
-      if (type === 'sell') {
-        const template = templates.find(t => t.name === 'Sales Invoice');
-        if (!template) {
-          res.status(404).json({ message: 'Template not found' });
-          return;
-        }
-        const message = template.content.replace('{name}', customer.name).replace('{amount}', total.toString()).replace('{balance}', customer.balance!.toString());
-        await sendSMS(customer.phone, message);
-      }
-      if (type === 'buy') {
-        const template = templates.find(t => t.name === 'Purchase Invoice');
-        if (!template) {
-          res.status(404).json({ message: 'Template not found' });
-          return;
-        }
-        const message = template.content.replace('{name}', customer.name).replace('{amount}', total.toString()).replace('{balance}', customer.balance!.toString());
-        await sendSMS(customer.phone, message);
-      }
-
-      if (type === 'receivable') {
-        const template = templates.find(t => t.name === 'Receivable Adjustment');
-        if (!template) {
-          res.status(404).json({ message: 'Template not found' });
-          return;
-        }
-        const message = template.content.replace('{name}', customer.name).replace('{amount}', total.toString()).replace('{balance}', customer.balance!.toString());
-        await sendSMS(customer.phone, message);
-      }
-      if (type === 'due') {
-        const template = templates.find(t => t.name === 'Due Adjustment');
-        if (!template) {
-          res.status(404).json({ message: 'Template not found' });
-          return;
-        }
-        const message = template.content.replace('{name}', customer.name).replace('{amount}', total.toString()).replace('{balance}', customer.balance!.toString());
-        await sendSMS(customer.phone, message);
-      }
-    }
 
     res.status(201).json({
       success: true,
-      newTransaction,
       message: sms ? 'Transaction added and SMS sent.' : 'Transaction added successfully',
+    });
+
+  } catch (error) {
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
+export const deleteTransaction = async (req: Request, res: Response, next: NextFunction) => {
+  const session = await mongoose.startSession();
+
+  try {
+    const { id } = req.params;
+
+    await session.withTransaction(async () => {
+      const transaction = await Transaction.findById(id).session(session);
+      if (!transaction) {
+        throw new Error('Transaction not found');
+      }
+
+      // Reverse balance
+      await reverseCustomerBalance(transaction, session);
+
+      // Delete transaction
+      await Transaction.deleteOne({ _id: id }).session(session);
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Transaction deleted successfully",
     });
   } catch (error) {
     next(error);
+  } finally {
+    session.endSession();
   }
 };
+
+
 
 
 // Get Transactions with Pagination, Search, Type and Date Filtering
