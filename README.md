@@ -6,7 +6,7 @@
 
 Backend server for the IPTV Business Management System. This Express.js application provides robust API endpoints for financial tracking, transaction management, customer data handling, authentication, and email/SMS notification services for IPTV business operations.
 
-## Frontend Repo: [https://github.com/CodeBuddy07/next-part](https://github.com/CodeBuddy07/accounting-client-site)
+## Frontend Repo: [https://github.com/CodeBuddy07/accounting-client-site](https://github.com/CodeBuddy07/accounting-client-site)
 
 ## 🛠️ Technology Stack
 
